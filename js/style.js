@@ -3,7 +3,7 @@ import gsap from 'gsap'
 import { CustomEase } from 'gsap/all'
 import * as THREE from 'three'
 
-import { resizeThreeCanvas, calcFov, debounce, lerp } from './utils'
+import { resizeThreeCanvas, calcFov, debounce } from './utils'
 
 import baseVertex from '../shaders/baseVertex.glsl'
 import baseFragment from '../shaders/baseFragment.glsl'
