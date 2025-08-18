@@ -10,7 +10,6 @@ import baseFragment from '../shaders/baseFragment.glsl'
 
 gsap.registerPlugin(CustomEase)
 
-// smooth scroll (lenis)
 let scroll = {
   scrollY: window.scrollY,
   scrollVelocity: 0
