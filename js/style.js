@@ -1,127 +1,144 @@
-import Lenis from 'lenis'
-import gsap from 'gsap'
-import { CustomEase } from 'gsap/all'
-import * as THREE from 'three'
+import Lenis from "lenis";
+import gsap from "gsap";
+import { CustomEase } from "gsap/all";
+import * as THREE from "three";
 
-import { resizeThreeCanvas, calcFov, debounce } from './utils'
+import { resizeThreeCanvas, calcFov, debounce } from "./utils";
 
-import baseVertex from '../shaders/baseVertex.glsl'
-import baseFragment from '../shaders/baseFragment.glsl'
+import baseVertex from "../shaders/baseVertex.glsl";
+import baseFragment from "../shaders/baseFragment.glsl";
 
-gsap.registerPlugin(CustomEase)
+gsap.registerPlugin(CustomEase);
 
 let scroll = {
   scrollY: window.scrollY,
-  scrollVelocity: 0
-}
+  scrollVelocity: 0,
+};
 
-const lenis = new Lenis()
+const lenis = new Lenis();
 
-lenis.on('scroll', (e) => {
-  scroll.scrollY = window.scrollY
-  scroll.scrollVelocity = e.velocity
-})
+lenis.on("scroll", (e) => {
+  scroll.scrollY = e.scroll;
+  scroll.scrollVelocity = e.velocity;
+});
 
 function scrollRaf(time) {
-  lenis.raf(time)
-  requestAnimationFrame(scrollRaf)
+  lenis.raf(time);
+  requestAnimationFrame(scrollRaf);
 }
 
-requestAnimationFrame(scrollRaf)
+requestAnimationFrame(scrollRaf);
 
-const setMediaStore = (scrollY) => {
-  const media = [...document.querySelectorAll('[data-webgl-media]')]
+const SLIDE_GAP = 30;
+let totalHeight = 0;
+
+const setMediaStore = () => {
+  const media = [...document.querySelectorAll("[data-webgl-media]")];
 
   mediaStore = media.map((media, i) => {
-    observer.observe(media)
+    const bounds = media.getBoundingClientRect();
+    const height = bounds.height;
 
-    media.dataset.index = String(i)
+    const imageMaterial = material.clone();
+    const imageMesh = new THREE.Mesh(geometry, imageMaterial);
 
-    const bounds = media.getBoundingClientRect()
-    const imageMaterial = material.clone()
+    const texture = new THREE.Texture(media);
+    texture.needsUpdate = true;
 
-    const imageMesh = new THREE.Mesh(geometry, imageMaterial)
+    imageMaterial.uniforms.uTexture.value = texture;
+    imageMaterial.uniforms.uTextureSize.value.set(
+      media.naturalWidth,
+      media.naturalHeight
+    );
+    imageMaterial.uniforms.uQuadSize.value.set(bounds.width, height);
+    imageMaterial.uniforms.uBorderRadius.value = parseFloat(
+      getComputedStyle(media).borderRadius.replace("px", "")
+    );
 
-    let texture = null
+    imageMesh.scale.set(bounds.width, height, 1);
+    const y = totalHeight;
+    imageMesh.position.set(0, y, 0);
 
-    texture = new THREE.Texture(media)
-    texture.needsUpdate = true
+    scene.add(imageMesh);
 
-    imageMaterial.uniforms.uTexture.value = texture
-    imageMaterial.uniforms.uTextureSize.value.x = media.naturalWidth
-    imageMaterial.uniforms.uTextureSize.value.y = media.naturalHeight
-    imageMaterial.uniforms.uQuadSize.value.x = bounds.width
-    imageMaterial.uniforms.uQuadSize.value.y = bounds.height
-    imageMaterial.uniforms.uBorderRadius.value = getComputedStyle(media).borderRadius.replace('px', '')
-
-    imageMesh.scale.set(bounds.width, bounds.height, 1)
-
-    if (!(bounds.top >= 0 && bounds.top <= window.innerHeight)) {
-      imageMesh.position.y = 2 * window.innerHeight
-    }
-
-    scene.add(imageMesh)
-
-    return {
+    const object = {
       media,
       material: imageMaterial,
       mesh: imageMesh,
       width: bounds.width,
-      height: bounds.height,
-      top: bounds.top + scrollY,
+      height: height,
+      top: totalHeight,
       left: bounds.left,
-      isInView: bounds.top >= -500 && bounds.top <= window.innerHeight + 500,
-    }
-  })
-}
+      isInView: true,
+    };
+
+    totalHeight += height + SLIDE_GAP * 5;
+
+    return object;
+  });
+};
 
 const setPositions = () => {
+  const loopedScroll = scroll.scrollY % totalHeight;
+
   mediaStore.forEach((object) => {
-    if (object.isInView) {
-      object.mesh.position.x = object.left - window.innerWidth / 2 + object.width / 2
-      object.mesh.position.y = -object.top + window.innerHeight / 2 - object.height / 2 + scroll.scrollY
+    let y = object.top - loopedScroll;
+    // Wrap
+    if (y < -object.height) {
+      y += totalHeight;
+    } else if (y > totalHeight - object.height) {
+      y -= totalHeight;
     }
-  })
-}
 
-const CAMERA_POS = 500
+    object.mesh.position.y = y;
+  });
+};
 
-const canvas = document.querySelector('canvas')
+const CAMERA_POS = 500;
 
-let observer
-let mediaStore
-let scene
-let geometry
-let material
+const canvas = document.querySelector("canvas");
+
+let observer;
+let mediaStore;
+let scene;
+let geometry;
+let material;
 
 // create intersection observer to only render in view elements
 observer = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
-      const index = entry.target.dataset.index
+      const index = entry.target.dataset.index;
 
       if (index) {
-        mediaStore[parseInt(index)].isInView = entry.isIntersecting
+        mediaStore[parseInt(index)].isInView = entry.isIntersecting;
       }
-    })
+    });
   },
-  { rootMargin: '500px 0px 500px 0px' }
-)
+  { rootMargin: "500px 0px 500px 0px" }
+);
 
 // scene
-scene = new THREE.Scene()
+scene = new THREE.Scene();
 
 // camera
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 10, 1000)
-camera.position.z = CAMERA_POS
-camera.fov = calcFov(CAMERA_POS)
-camera.updateProjectionMatrix()
+const camera = new THREE.PerspectiveCamera(
+  50,
+  window.innerWidth / window.innerHeight,
+  10,
+  1000
+);
+camera.position.z = CAMERA_POS;
+camera.fov = calcFov(CAMERA_POS);
+camera.updateProjectionMatrix();
 
 // geometry and material
-geometry = new THREE.PlaneGeometry(1, 1, 100, 100)
+geometry = new THREE.PlaneGeometry(1, 1, 100, 100);
 material = new THREE.ShaderMaterial({
   uniforms: {
-    uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+    uResolution: {
+      value: new THREE.Vector2(window.innerWidth, window.innerHeight),
+    },
     uTime: { value: 0 },
     uCursor: { value: new THREE.Vector2(0.5, 0.5) },
     uScrollVelocity: { value: 0 },
@@ -131,63 +148,70 @@ material = new THREE.ShaderMaterial({
     uBorderRadius: { value: 0 },
   },
   vertexShader: baseVertex,
-  fragmentShader:  baseFragment,
-  glslVersion: THREE.GLSL3
-})
+  fragmentShader: baseFragment,
+  glslVersion: THREE.GLSL3,
+});
 
 // renderer
-const renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true })
-renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+const renderer = new THREE.WebGLRenderer({
+  canvas: canvas,
+  alpha: true,
+  antialias: true,
+});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
 // render loop
 const render = (time = 0) => {
-  time /= 1000
+  time /= 1000;
 
   mediaStore.forEach((object) => {
-    if (object.isInView) {
-      object.material.uniforms.uResolution.value.x = window.innerWidth
-      object.material.uniforms.uResolution.value.y = window.innerHeight
-      object.material.uniforms.uTime.value = time
-      object.material.uniforms.uScrollVelocity.value = scroll.scrollVelocity
-    } else {
-      object.mesh.position.y = 2 * window.innerHeight
-    }
+    object.material.uniforms.uResolution.value.x = window.innerWidth;
+    object.material.uniforms.uResolution.value.y = window.innerHeight;
+    object.material.uniforms.uTime.value = time;
+    object.material.uniforms.uScrollVelocity.value = scroll.scrollVelocity;
+  });
+
+  setPositions();
+
+  renderer.render(scene, camera);
+
+  requestAnimationFrame(render);
+};
+
+window.addEventListener(
+  "resize",
+  debounce(() => {
+    const fov = calcFov(CAMERA_POS);
+
+    resizeThreeCanvas({ camera, fov, renderer });
+
+    mediaStore.forEach((object) => {
+      const bounds = object.media.getBoundingClientRect();
+      object.mesh.scale.set(bounds.width, bounds.height, 1);
+      object.width = bounds.width;
+      object.height = bounds.height;
+      object.top = bounds.top + scroll.scrollY;
+      object.left = bounds.left;
+      (object.isInView = bounds.top >= 0 && bounds.top <= window.innerHeight),
+        (object.material.uniforms.uTextureSize.value.x =
+          object.media.naturalWidth);
+      object.material.uniforms.uTextureSize.value.y =
+        object.media.naturalHeight;
+      object.material.uniforms.uQuadSize.value.x = bounds.width;
+      object.material.uniforms.uQuadSize.value.y = bounds.height;
+      object.material.uniforms.uBorderRadius.value = getComputedStyle(
+        object.media
+      ).borderRadius.replace("px", "");
+    });
   })
+);
 
-  setPositions()
-
-  renderer.render(scene, camera)
-
-  requestAnimationFrame(render)
-}
-
-window.addEventListener('resize', debounce(() => {
-  const fov = calcFov(CAMERA_POS)
-
-  resizeThreeCanvas({ camera, fov, renderer })
-
-  mediaStore.forEach((object) => {
-    const bounds = object.media.getBoundingClientRect()
-    object.mesh.scale.set(bounds.width, bounds.height, 1)
-    object.width = bounds.width
-    object.height = bounds.height
-    object.top = bounds.top + scroll.scrollY
-    object.left = bounds.left
-    object.isInView = bounds.top >= 0 && bounds.top <= window.innerHeight,
-    object.material.uniforms.uTextureSize.value.x = object.media.naturalWidth
-    object.material.uniforms.uTextureSize.value.y = object.media.naturalHeight
-    object.material.uniforms.uQuadSize.value.x = bounds.width
-    object.material.uniforms.uQuadSize.value.y = bounds.height
-    object.material.uniforms.uBorderRadius.value = getComputedStyle(object.media).borderRadius.replace('px', '')
-  })
-}))
-
-window.addEventListener('load', () => {
+window.addEventListener("load", () => {
   // media details
-  setMediaStore(scroll.scrollY)
+  setMediaStore(scroll.scrollY);
 
-  requestAnimationFrame(render)
+  requestAnimationFrame(render);
 
-  document.body.classList.remove('loading')
-})
+  document.body.classList.remove("loading");
+});
